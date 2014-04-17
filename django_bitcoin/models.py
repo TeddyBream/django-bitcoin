@@ -73,6 +73,7 @@ class DepositTransaction(models.Model):
 
     created_at = models.DateTimeField(default=datetime.datetime.now)
     address = models.ForeignKey('BitcoinAddress')
+    from_bitcoinaddress = models.CharField(max_length=50, blank=True)
 
     amount = models.DecimalField(max_digits=16, decimal_places=8, default=Decimal(0))
     description = models.CharField(max_length=100, blank=True, null=True, default=None)
@@ -348,7 +349,7 @@ class BitcoinAddress(models.Model):
                             least_received=self.least_received_confirmed)
                     if self.migrated_to_transactions:
                         wt = WalletTransaction.objects.create(to_wallet=self.wallet, amount=deposit_tx.amount, description=self.address,
-                            deposit_address=self)
+                            deposit_address=self, deposit_transaction=deposit_tx)
                         deposit_tx.transaction = wt
                         DepositTransaction.objects.select_for_update().filter(id=deposit_tx.id).update(transaction=wt)
                     self.wallet.update_last_balance(deposit_tx.amount)
@@ -685,7 +686,8 @@ class Wallet(models.Model):
             amount = Decimal(amount)
         amount = amount.quantize(Decimal('0.00000001'))
 
-        with db_transaction.autocommit():
+        db_transaction.set_autocommit(True)
+        try:
             db_transaction.enter_transaction_management()
             db_transaction.commit()
             if settings.BITCOIN_UNCONFIRMED_TRANSFERS:
@@ -733,7 +735,11 @@ class Wallet(models.Model):
                     changed=(Decimal(-1) * amount), transaction=transaction)
                 balance_changed_confirmed.send(sender=otherWallet,
                     changed=(amount), transaction=transaction)
-            return transaction
+        finally:
+            db_transaction.set_autocommit(False)
+
+        return transaction    
+
 
     def send_to_address(self, address, amount, description='', expires_seconds=settings.BITCOIN_OUTGOING_DEFAULT_DELAY_SECONDS):
         if settings.BITCOIN_DISABLE_OUTGOING:
@@ -749,7 +755,8 @@ class Wallet(models.Model):
         if amount <= 0:
             raise Exception(_("Can't send zero or negative amounts"))
         # concurrency check
-        with db_transaction.autocommit():
+        db_transaction.set_autocommit(True)
+        try:
             db_transaction.enter_transaction_management()
             db_transaction.commit()
             avail = self.total_balance()
@@ -800,7 +807,10 @@ class Wallet(models.Model):
                     changed=(Decimal(-1) * amount), transaction=bwt)
                 balance_changed_confirmed.send(sender=self,
                     changed=(Decimal(-1) * amount), transaction=bwt)
-            return (bwt, None)
+        finally:
+            db_transaction.set_autocommit(False)
+
+        return (bwt, None)
 
     def update_transaction_cache(self,
                                  mincf=settings.BITCOIN_MINIMUM_CONFIRMATIONS):

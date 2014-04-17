@@ -62,6 +62,7 @@ def query_transactions():
             elif dps.count() == 0:
                 deposit_tx = DepositTransaction.objects.create(wallet=ba.wallet,
                     address=ba,
+                    from_bitcoinaddress=tx['account'],
                     amount=tx['amount'],
                     txid=tx[u'txid'],
                     confirmations=int(tx['confirmations']))
