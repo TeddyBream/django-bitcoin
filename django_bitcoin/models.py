@@ -738,7 +738,7 @@ class Wallet(models.Model):
         finally:
             db_transaction.set_autocommit(False)
 
-        return transaction    
+        return transaction
 
 
     def send_to_address(self, address, amount, description='', expires_seconds=settings.BITCOIN_OUTGOING_DEFAULT_DELAY_SECONDS):
@@ -892,7 +892,7 @@ class Wallet(models.Model):
             else:
                 return self.total_received(minconf) - self.total_sent()
         else:
-            return self.balance(minconf)[1]
+            return self.balance(minconf)
 
     def total_balance_historical(self, balance_date, minconf=settings.BITCOIN_MINIMUM_CONFIRMATIONS):
         if settings.BITCOIN_TRANSACTION_SIGNALING:
