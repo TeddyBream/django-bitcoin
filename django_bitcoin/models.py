@@ -198,60 +198,63 @@ def filter_doubles(outgoing_list):
 
 
 @task()
-@db_transaction.autocommit
 def process_outgoing_transactions():
-    if OutgoingTransaction.objects.filter(executed_at=None, expires_at__lte=datetime.datetime.now()).count()>0 or \
-        OutgoingTransaction.objects.filter(executed_at=None).count()>6:
-        blockcount = bitcoind.bitcoind_api.getblockcount()
-        with NonBlockingCacheLock('process_outgoing_transactions'):
-            ots_ids = filter_doubles(OutgoingTransaction.objects.filter(executed_at=None).order_by("expires_at")[:15])
-            ots = OutgoingTransaction.objects.filter(executed_at=None, id__in=ots_ids)
-            update_wallets = []
-            transaction_hash = {}
-            for ot in ots:
-                transaction_hash[ot.to_bitcoinaddress] = float(ot.amount)
-            updated = OutgoingTransaction.objects.filter(id__in=ots_ids,
-                executed_at=None).select_for_update().update(executed_at=datetime.datetime.now())
-            if updated == len(ots):
-                try:
-                    result = bitcoind.sendmany(transaction_hash)
-                except jsonrpc.JSONRPCException as e:
-                    if e.error == u"{u'message': u'Insufficient funds', u'code': -4}" or \
-                        e.error == u"{u'message': u'Insufficient funds', u'code': -6}":
-                        u2 = OutgoingTransaction.objects.filter(id__in=ots_ids, under_execution=False
-                            ).select_for_update().update(executed_at=None)
+    db_transaction.set_autocommit(True)
+    try:
+        if OutgoingTransaction.objects.filter(executed_at=None, expires_at__lte=datetime.datetime.now()).count()>0 or \
+            OutgoingTransaction.objects.filter(executed_at=None).count()>6:
+            blockcount = bitcoind.bitcoind_api.getblockcount()
+            with NonBlockingCacheLock('process_outgoing_transactions'):
+                ots_ids = filter_doubles(OutgoingTransaction.objects.filter(executed_at=None).order_by("expires_at")[:15])
+                ots = OutgoingTransaction.objects.filter(executed_at=None, id__in=ots_ids)
+                update_wallets = []
+                transaction_hash = {}
+                for ot in ots:
+                    transaction_hash[ot.to_bitcoinaddress] = float(ot.amount)
+                updated = OutgoingTransaction.objects.filter(id__in=ots_ids,
+                    executed_at=None).select_for_update().update(executed_at=datetime.datetime.now())
+                if updated == len(ots):
+                    try:
+                        result = bitcoind.sendmany(transaction_hash)
+                    except jsonrpc.JSONRPCException as e:
+                        if e.error == u"{u'message': u'Insufficient funds', u'code': -4}" or \
+                            e.error == u"{u'message': u'Insufficient funds', u'code': -6}":
+                            u2 = OutgoingTransaction.objects.filter(id__in=ots_ids, under_execution=False
+                                ).select_for_update().update(executed_at=None)
+                        else:
+                            u2 = OutgoingTransaction.objects.filter(id__in=ots_ids, under_execution=False
+                                ).select_for_update().update(under_execution=True, txid=e.error)
+                        raise
+                    OutgoingTransaction.objects.filter(id__in=ots_ids).update(txid=result)
+                    transaction = bitcoind.gettransaction(result)
+                    if Decimal(transaction['fee']) < Decimal(0):
+                        fw = fee_wallet()
+                        fee_amount = Decimal(transaction['fee']) * Decimal(-1)
+                        orig_fee_transaction = WalletTransaction.objects.create(
+                                amount=fee_amount,
+                                from_wallet=fw,
+                                to_wallet=None)
+                        i = 1
+                        for ot_id in ots_ids:
+                            wt = WalletTransaction.objects.get(outgoing_transaction__id=ot_id)
+                            update_wallets.append(wt.from_wallet_id)
+                            fee_transaction = WalletTransaction.objects.create(
+                                amount=(fee_amount / Decimal(i)).quantize(Decimal("0.00000001")),
+                                from_wallet_id=wt.from_wallet_id,
+                                to_wallet=fw,
+                                description="fee")
+                            i += 1
                     else:
-                        u2 = OutgoingTransaction.objects.filter(id__in=ots_ids, under_execution=False
-                            ).select_for_update().update(under_execution=True, txid=e.error)
-                    raise
-                OutgoingTransaction.objects.filter(id__in=ots_ids).update(txid=result)
-                transaction = bitcoind.gettransaction(result)
-                if Decimal(transaction['fee']) < Decimal(0):
-                    fw = fee_wallet()
-                    fee_amount = Decimal(transaction['fee']) * Decimal(-1)
-                    orig_fee_transaction = WalletTransaction.objects.create(
-                            amount=fee_amount,
-                            from_wallet=fw,
-                            to_wallet=None)
-                    i = 1
-                    for ot_id in ots_ids:
-                        wt = WalletTransaction.objects.get(outgoing_transaction__id=ot_id)
-                        update_wallets.append(wt.from_wallet_id)
-                        fee_transaction = WalletTransaction.objects.create(
-                            amount=(fee_amount / Decimal(i)).quantize(Decimal("0.00000001")),
-                            from_wallet_id=wt.from_wallet_id,
-                            to_wallet=fw,
-                            description="fee")
-                        i += 1
-                else:
-                    raise Exception("Updated amount not matchinf transaction amount!")
-            for wid in update_wallets:
-                update_wallet_balance.delay(wid)
-    # elif OutgoingTransaction.objects.filter(executed_at=None).count()>0:
-    #     next_run_at = OutgoingTransaction.objects.filter(executed_at=None).aggregate(Min('expires_at'))['expires_at__min']
-    #     if next_run_at:
-    #         process_outgoing_transactions.retry(
-    #             countdown=max(((next_run_at - datetime.datetime.now(pytz.utc)) + datetime.timedelta(seconds=5)).total_seconds(), 5))
+                        raise Exception("Updated amount not matchinf transaction amount!")
+                for wid in update_wallets:
+                    update_wallet_balance.delay(wid)
+        # elif OutgoingTransaction.objects.filter(executed_at=None).count()>0:
+        #     next_run_at = OutgoingTransaction.objects.filter(executed_at=None).aggregate(Min('expires_at'))['expires_at__min']
+        #     if next_run_at:
+        #         process_outgoing_transactions.retry(
+        #             countdown=max(((next_run_at - datetime.datetime.now(pytz.utc)) + datetime.timedelta(seconds=5)).total_seconds(), 5))
+    finally:
+        db_transaction.set_autocommit(False)
 
 
 class BitcoinAddress(models.Model):
@@ -735,6 +738,7 @@ class Wallet(models.Model):
                     changed=(Decimal(-1) * amount), transaction=transaction)
                 balance_changed_confirmed.send(sender=otherWallet,
                     changed=(amount), transaction=transaction)
+            db_transaction.commit()
         finally:
             db_transaction.set_autocommit(False)
 
@@ -807,6 +811,7 @@ class Wallet(models.Model):
                     changed=(Decimal(-1) * amount), transaction=bwt)
                 balance_changed_confirmed.send(sender=self,
                     changed=(Decimal(-1) * amount), transaction=bwt)
+            db_transaction.commit()
         finally:
             db_transaction.set_autocommit(False)
 
