@@ -558,8 +558,15 @@ class Payment(models.Model):
     def get_absolute_url(self):
         return ('view_or_url_name',)
 
-class WalletTransaction(models.Model):
+
+class BitcoinHistory(models.Model):
     created_at = models.DateTimeField(default=datetime.datetime.now)
+    amount = models.DecimalField(
+        max_digits=16,
+        decimal_places=8,
+        default=Decimal("0.0"))
+
+class WalletTransaction(BitcoinHistory):
     from_wallet = models.ForeignKey(
         'Wallet',
         null=True,
@@ -572,10 +579,6 @@ class WalletTransaction(models.Model):
         max_length=50,
         blank=True)
     outgoing_transaction = models.ForeignKey('OutgoingTransaction', null=True, default=None)
-    amount = models.DecimalField(
-        max_digits=16,
-        decimal_places=8,
-        default=Decimal("0.0"))
     description = models.CharField(max_length=100, blank=True)
 
     deposit_address = models.ForeignKey(BitcoinAddress, null=True)
