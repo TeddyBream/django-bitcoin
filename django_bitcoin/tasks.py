@@ -12,7 +12,7 @@ from django_bitcoin.utils import bitcoind
 from django_bitcoin import settings
 
 from django.utils.translation import ugettext as _
-from django_bitcoin.models import DepositTransaction, BitcoinAddress
+from django_bitcoin.models import DepositTransaction, BitcoinAddress, WalletTransaction
 
 import django.dispatch
 
@@ -46,40 +46,45 @@ def query_transactions():
         # print query_block, blockhash
         transactions = bitcoind.bitcoind_api.listsinceblock(blockhash)
         # print transactions
-        transactions = [tx for tx in transactions["transactions"] if tx["category"]=="receive"]
-        print transactions
-        for tx in transactions:
-            ba = BitcoinAddress.objects.filter(address=tx[u'address'])
-            if ba.count() > 1:
-                raise Exception(u"Too many addresses!")
-            if ba.count() == 0:
-                print "no address found, address", tx[u'address']
-                continue
-            ba = ba[0]
-            dps = DepositTransaction.objects.filter(txid=tx[u'txid'], amount=tx['amount'], address=ba)
-            if dps.count() > 1:
-                raise Exception(u"Too many deposittransactions for the same ID!")
-            elif dps.count() == 0:
-                deposit_tx = DepositTransaction.objects.create(wallet=ba.wallet,
-                    address=ba,
-                    from_bitcoinaddress=tx['account'],
-                    amount=tx['amount'],
-                    txid=tx[u'txid'],
-                    confirmations=int(tx['confirmations']))
-                if deposit_tx.confirmations >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
-                    ba.query_bitcoin_deposit(deposit_tx)
+        #transactions = [tx for tx in transactions["transactions"] if tx["category"]=="receive"]
+        print transactions["transactions"]
+        for tx in transactions["transactions"]:
+            if tx["category"] == "receive":
+                ba = BitcoinAddress.objects.filter(address=tx[u'address'])
+                if ba.count() > 1:
+                    raise Exception(u"Too many addresses!")
+                if ba.count() == 0:
+                    print "no address found, address", tx[u'address']
+                    continue
+                ba = ba[0]
+                dps = DepositTransaction.objects.filter(txid=tx[u'txid'], amount=tx['amount'], address=ba)
+                if dps.count() > 1:
+                    raise Exception(u"Too many deposittransactions for the same ID!")
+                elif dps.count() == 0:
+                    deposit_tx = DepositTransaction.objects.create(wallet=ba.wallet,
+                        address=ba,
+                        from_bitcoinaddress=tx['account'],
+                        amount=tx['amount'],
+                        txid=tx[u'txid'],
+                        confirmations=int(tx['confirmations']))
+                    if deposit_tx.confirmations >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
+                        ba.query_bitcoin_deposit(deposit_tx)
+                    else:
+                        ba.query_unconfirmed_deposits()
+                elif dps.count() == 1 and not dps[0].under_execution:
+                    deposit_tx = dps[0]
+                    if int(tx['confirmations']) >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
+                        ba.query_bitcoin_deposit(deposit_tx)
+                    if int(tx['confirmations']) > deposit_tx.confirmations:
+                        DepositTransaction.objects.filter(id=deposit_tx.id).update(confirmations=int(tx['confirmations']))
+                elif dps.count() == 1:
+                    print "already processed", dps[0].txid, dps[0].transaction
                 else:
-                    ba.query_unconfirmed_deposits()
-            elif dps.count() == 1 and not dps[0].under_execution:
-                deposit_tx = dps[0]
-                if int(tx['confirmations']) >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
-                    ba.query_bitcoin_deposit(deposit_tx)
-                if int(tx['confirmations']) > deposit_tx.confirmations:
-                    DepositTransaction.objects.filter(id=deposit_tx.id).update(confirmations=int(tx['confirmations']))
-            elif dps.count() == 1:
-                print "already processed", dps[0].txid, dps[0].transaction
-            else:
-                print "FUFFUFUU"
+                    print "FUFFUFUU"
+            elif tx["category"] == "send":
+                wallet_transactions = WalletTransaction.objects.filter(outgoing_transaction__txid=tx[u'txid'])
+                if wallet_transactions.count() > 0 and tx['confirmations'] >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
+                    wallet_transactions.update(status=WalletTransaction.COMPLETE)
 
         cache.set("queried_block_index", max_query_block)
 

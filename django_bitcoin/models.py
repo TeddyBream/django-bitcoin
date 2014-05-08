@@ -348,7 +348,7 @@ class BitcoinAddress(models.Model):
                             least_received=self.least_received_confirmed)
                     if self.migrated_to_transactions:
                         wt = WalletTransaction.objects.create(to_wallet=self.wallet, amount=deposit_tx.amount, description=self.address,
-                            deposit_address=self, deposit_transaction=deposit_tx)
+                            deposit_address=self, deposit_transaction=deposit_tx, status=WalletTransaction.COMPLETE)
                         deposit_tx.transaction = wt
                         DepositTransaction.objects.select_for_update().filter(id=deposit_tx.id).update(transaction=wt)
                     self.wallet.update_last_balance(deposit_tx.amount)
@@ -404,6 +404,8 @@ def new_bitcoin_address():
                 return bp
             else:
                 print "wallet transaction concurrency:", bp.address
+        db_transaction.commit()
+        db_transaction.leave_transaction_management()
 
 
 class Payment(models.Model):
@@ -560,11 +562,23 @@ class Payment(models.Model):
 
 
 class BitcoinHistory(models.Model):
+    PENDING = 'pending'
+    DECLINE = 'decline'
+    COMPLETE = 'complete'
+
+    STATUS_CHOICES = (
+        (PENDING, 'Pending'),
+        (DECLINE, 'Decline'),
+        (COMPLETE, 'Complete'),
+    )
+
     created_at = models.DateTimeField(default=datetime.datetime.now)
     amount = models.DecimalField(
         max_digits=16,
         decimal_places=8,
         default=Decimal("0.0"))
+    status = models.CharField(max_length=8, choices=STATUS_CHOICES, default=PENDING)
+
 
 class WalletTransaction(BitcoinHistory):
     from_wallet = models.ForeignKey(
@@ -624,6 +638,7 @@ class WalletTransaction(BitcoinHistory):
         unconfirmed = self.amount - confirmed
 
         return (unconfirmed, confirmed, transactions)
+
 
 from django.db.models import Q
 
@@ -717,7 +732,8 @@ class Wallet(models.Model):
             amount=amount,
             from_wallet=self,
             to_wallet=otherWallet,
-            description=description)
+            description=description,
+            status=WalletTransaction.COMPLETE)
         # db_transaction.commit()
         self.transaction_counter = self.transaction_counter+1
         self.last_balance = new_balance
@@ -735,6 +751,7 @@ class Wallet(models.Model):
             balance_changed_confirmed.send(sender=otherWallet,
                 changed=(amount), transaction=transaction)
         db_transaction.commit()
+        db_transaction.leave_transaction_management()
 
         return transaction
 
@@ -805,6 +822,7 @@ class Wallet(models.Model):
             balance_changed_confirmed.send(sender=self,
                 changed=(Decimal(-1) * amount), transaction=bwt)
         db_transaction.commit()
+        db_transaction.leave_transaction_management()
 
         return (bwt, None)
 
@@ -857,16 +875,20 @@ class Wallet(models.Model):
         if confirmed == False:
             sql="""
              SELECT IFNULL((SELECT SUM(least_received) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s), 0)
-            + IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt WHERE wt.to_wallet_id=%(id)s AND wt.from_wallet_id>0), 0)
-            - IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt WHERE wt.from_wallet_id=%(id)s), 0) as total_balance;
+            + IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt
+                INNER JOIN django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id WHERE wt.to_wallet_id=%(id)s AND wt.from_wallet_id>0), 0)
+            - IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN django_bitcoin_bitcoinhistory bh  on wt.bitcoinhistory_ptr_id = bh.id
+                WHERE wt.from_wallet_id=%(id)s), 0) as total_balance;
             """ % {'id': self.id}
             cursor.execute(sql)
             return cursor.fetchone()[0]
         else:
             sql="""
              SELECT IFNULL((SELECT SUM(least_received_confirmed) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s AND ba.migrated_to_transactions=0), 0)
-            + IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt WHERE wt.to_wallet_id=%(id)s), 0)
-            - IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt WHERE wt.from_wallet_id=%(id)s), 0) as total_balance;
+            + IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
+                WHERE wt.to_wallet_id=%(id)s), 0)
+            - IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
+            WHERE wt.from_wallet_id=%(id)s), 0) as total_balance;
             """ % {'id': self.id}
             cursor.execute(sql)
             self.last_balance = cursor.fetchone()[0]
