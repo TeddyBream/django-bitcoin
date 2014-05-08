@@ -400,6 +400,7 @@ def new_bitcoin_address():
             updated = BitcoinAddress.objects.select_for_update().filter(Q(id=bp.id) & Q(active=False) & Q(wallet__isnull=True) & \
                 Q(least_received__lte=0)).update(active=True)
             db_transaction.commit()
+            db_transaction.leave_transaction_management()
             if updated:
                 return bp
             else:
