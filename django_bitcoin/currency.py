@@ -140,7 +140,7 @@ class BitcoinChartsCurrency(Currency):
     def populate_cache(self):
         try:
             f = urllib2.urlopen(
-                u"http://bitcoincharts.com/t/weighted_prices.json")
+                u"http://api.bitcoincharts.com/v1/weighted_prices.json")
             result=f.read()
             j=json.loads(result)
             base_price = j[self.identifier]
@@ -210,7 +210,7 @@ def markets_chart():
     if not cache.get(cache_key):
         try:
             f = urllib2.urlopen(
-                u"http://bitcoincharts.com/t/markets.json")
+                u"http://api.bitcoincharts.com/v1/markets.json")
             result=f.read()
             j=json.loads(result)
             final_markets={}
@@ -289,7 +289,7 @@ def get_rate_table():
     if not cache.get(cache_key):
         try:
             f = urllib2.urlopen(
-                u"http://bitcoincharts.com/t/weighted_prices.json")
+                u"http://api.bitcoincharts.com/v1/weighted_prices.json")
             result=f.read()
             j=json.loads(result)
             cache.set(cache_key, j, 60*60)
