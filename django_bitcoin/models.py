@@ -885,7 +885,7 @@ class Wallet(models.Model):
             return cursor.fetchone()[0]
         else:
             sql="""
-             SELECT IFNULL((SELECT SUM(least_received_confirmed) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s AND ba.migrated_to_transactions=0), 0)
+             SELECT IFNULL((SELECT SUM(least_received_confirmed) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s AND ba.migrated_to_transactions='true'), 0)
             + IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
                 WHERE wt.to_wallet_id=%(id)s), 0)
             - IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
