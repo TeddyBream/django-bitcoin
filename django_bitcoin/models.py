@@ -794,7 +794,10 @@ class Wallet(models.Model):
             to_bitcoinaddress=address,
             outgoing_transaction=outgoing_transaction,
             description=description)
-        process_outgoing_transactions.apply_async((), countdown=(expires_seconds+1))
+        try:
+            process_outgoing_transactions()
+        except jsonrpc.JSONRPCException as e:
+            raise Exception(e.error)
         # try:
         #     result = bitcoind.send(address, amount)
         # except jsonrpc.JSONRPCException:
