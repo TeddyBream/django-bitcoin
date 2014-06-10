@@ -198,12 +198,14 @@ def filter_doubles(outgoing_list):
 
 
 @task()
-def process_outgoing_transactions():
+def process_outgoing_transactions(ots_id=None):
     if OutgoingTransaction.objects.filter(executed_at=None, expires_at__lte=datetime.datetime.now()).count()>0 or \
         OutgoingTransaction.objects.filter(executed_at=None).count()>6:
         blockcount = bitcoind.bitcoind_api.getblockcount()
         with NonBlockingCacheLock('process_outgoing_transactions'):
             ots_ids = filter_doubles(OutgoingTransaction.objects.filter(executed_at=None).order_by("expires_at")[:15])
+            if ots_id:
+                ots_ids = filter_doubles(OutgoingTransaction.objects.filter(id=ots_id))
             ots = OutgoingTransaction.objects.filter(executed_at=None, id__in=ots_ids)
             update_wallets = []
             transaction_hash = {}
@@ -795,11 +797,10 @@ class Wallet(models.Model):
             outgoing_transaction=outgoing_transaction,
             description=description)
         try:
-            process_outgoing_transactions()
+            process_outgoing_transactions(outgoing_transaction.id)
         except jsonrpc.JSONRPCException as e:
             raise Exception(e.error)
         # try:
-        #     result = bitcoind.send(address, amount)
         # except jsonrpc.JSONRPCException:
         #     bwt.delete()
         #     updated2 = Wallet.objects.filter(Q(id=self.id) & Q(last_balance=new_balance)).update(last_balance=avail)
@@ -878,20 +879,20 @@ class Wallet(models.Model):
         cursor = connection.cursor()
         if confirmed == False:
             sql="""
-             SELECT COALESCE((SELECT SUM(least_received) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s), 0)
-            + COALESCE((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt
+             SELECT IFNULL((SELECT SUM(least_received) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s), 0)
+            + IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt
                 INNER JOIN django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id WHERE wt.to_wallet_id=%(id)s AND wt.from_wallet_id>0), 0)
-            - COALESCE((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN django_bitcoin_bitcoinhistory bh  on wt.bitcoinhistory_ptr_id = bh.id
+            - IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN django_bitcoin_bitcoinhistory bh  on wt.bitcoinhistory_ptr_id = bh.id
                 WHERE wt.from_wallet_id=%(id)s), 0) as total_balance;
             """ % {'id': self.id}
             cursor.execute(sql)
             return cursor.fetchone()[0]
         else:
             sql="""
-             SELECT COALESCE((SELECT SUM(least_received_confirmed) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s AND ba.migrated_to_transactions='false'), 0)
-            + COALESCE((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
+             SELECT IFNULL((SELECT SUM(least_received_confirmed) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s AND ba.migrated_to_transactions=0), 0)
+            + IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
                 WHERE wt.to_wallet_id=%(id)s), 0)
-            - COALESCE((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
+            - IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
             WHERE wt.from_wallet_id=%(id)s), 0) as total_balance;
             """ % {'id': self.id}
             cursor.execute(sql)
