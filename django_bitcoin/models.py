@@ -878,21 +878,19 @@ class Wallet(models.Model):
         from django.db import connection
         cursor = connection.cursor()
         if confirmed == False:
-            sql="""
-             SELECT IFNULL((SELECT SUM(least_received) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s), 0)
-            + IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt
+            sql="""SELECT COALESCE((SELECT SUM(least_received) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s), 0)
+            + COALESCE((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt
                 INNER JOIN django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id WHERE wt.to_wallet_id=%(id)s AND wt.from_wallet_id>0), 0)
-            - IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN django_bitcoin_bitcoinhistory bh  on wt.bitcoinhistory_ptr_id = bh.id
+            - COALESCE((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN django_bitcoin_bitcoinhistory bh  on wt.bitcoinhistory_ptr_id = bh.id
                 WHERE wt.from_wallet_id=%(id)s), 0) as total_balance;
             """ % {'id': self.id}
             cursor.execute(sql)
             return cursor.fetchone()[0]
         else:
-            sql="""
-             SELECT IFNULL((SELECT SUM(least_received_confirmed) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s AND ba.migrated_to_transactions=0), 0)
-            + IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
+            sql=""" SELECT COALESCE((SELECT SUM(least_received_confirmed) FROM django_bitcoin_bitcoinaddress ba WHERE ba.wallet_id=%(id)s AND ba.migrated_to_transactions='false'), 0)
+            + COALESCE((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
                 WHERE wt.to_wallet_id=%(id)s), 0)
-            - IFNULL((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
+            - COALESCE((SELECT SUM(amount) FROM django_bitcoin_wallettransaction wt INNER JOIN  django_bitcoin_bitcoinhistory bh on wt.bitcoinhistory_ptr_id = bh.id
             WHERE wt.from_wallet_id=%(id)s), 0) as total_balance;
             """ % {'id': self.id}
             cursor.execute(sql)
