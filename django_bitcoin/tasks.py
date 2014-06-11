@@ -5,10 +5,11 @@ import random
 import hashlib
 import base64
 from decimal import Decimal
+import logging
 
 from django.db import models
 
-from django_bitcoin.utils import bitcoind
+from django_bitcoin.utils import bitcoind, pubKeyToAddr
 from django_bitcoin import settings
 
 from django.utils.translation import ugettext as _
@@ -26,6 +27,8 @@ from distributedlock import distributedlock, MemcachedLock, LockNotAcquiredError
 from django.core.cache import cache
 
 from django.core.mail import mail_admins
+from django.conf import settings
+from celery.utils.log import get_task_logger
 
 def NonBlockingCacheLock(key, lock=None, blocking=False, timeout=10000):
     if lock is None:
@@ -33,9 +36,15 @@ def NonBlockingCacheLock(key, lock=None, blocking=False, timeout=10000):
 
     return distributedlock(key, lock, blocking)
 
+
 @task()
 def query_transactions():
+    logger = get_task_logger('bitcoin_transactions')
+
     with NonBlockingCacheLock("query_transactions_ongoing"):
+        info = bitcoind.bitcoind_api.getinfo()
+        testnet = info['testnet']
+
         blockcount = bitcoind.bitcoind_api.getblockcount()
         max_query_block = blockcount - settings.BITCOIN_MINIMUM_CONFIRMATIONS - 1
         if cache.get("queried_block_index"):
@@ -50,6 +59,14 @@ def query_transactions():
         print transactions["transactions"]
         for tx in transactions["transactions"]:
             if tx["category"] == "receive":
+                raw_transaction = bitcoind.bitcoind_api.getrawtransaction(tx['txid'])
+                decoded_transaction = bitcoind.bitcoind_api.decoderawtransaction(raw_transaction)
+                asm = decoded_transaction['vin'][0]['scriptSig']['asm']
+
+                from_address = pubKeyToAddr(asm.split()[1], testnet)
+
+                logger.info("Received %s BTC from %s to %s on transaction %s with %s confirmations" %
+                            (tx['amount'], from_address, tx['address'], tx['txid'], tx['confirmations']))
                 ba = BitcoinAddress.objects.filter(address=tx[u'address'])
                 if ba.count() > 1:
                     raise Exception(u"Too many addresses!")
@@ -63,7 +80,7 @@ def query_transactions():
                 elif dps.count() == 0:
                     deposit_tx = DepositTransaction.objects.create(wallet=ba.wallet,
                         address=ba,
-                        from_bitcoinaddress=tx['account'],
+                        from_bitcoinaddress=from_address,
                         amount=tx['amount'],
                         txid=tx[u'txid'],
                         confirmations=int(tx['confirmations']))

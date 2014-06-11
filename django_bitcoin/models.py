@@ -6,6 +6,7 @@ import hashlib
 import base64
 import pytz
 from decimal import Decimal
+import logging
 
 from django.db import models
 from django.contrib.sites.models import Site
@@ -199,6 +200,8 @@ def filter_doubles(outgoing_list):
 
 @task()
 def process_outgoing_transactions(ots_id=None):
+    logger = logging.getLogger('bitcoin_transactions')
+
     if OutgoingTransaction.objects.filter(executed_at=None, expires_at__lte=datetime.datetime.now()).count()>0 or \
         OutgoingTransaction.objects.filter(executed_at=None).count()>6:
         blockcount = bitcoind.bitcoind_api.getblockcount()
@@ -214,9 +217,11 @@ def process_outgoing_transactions(ots_id=None):
             updated = OutgoingTransaction.objects.filter(id__in=ots_ids,
                 executed_at=None).select_for_update().update(executed_at=datetime.datetime.now())
             if updated == len(ots):
+                logger.info("Sendmany: %s" % transaction_hash)
                 try:
                     result = bitcoind.sendmany(transaction_hash)
                 except jsonrpc.JSONRPCException as e:
+                    logger.error("Sendmany error: %s" % e.error)
                     if e.error == u"{u'message': u'Insufficient funds', u'code': -4}" or \
                         e.error == u"{u'message': u'Insufficient funds', u'code': -6}":
                         u2 = OutgoingTransaction.objects.filter(id__in=ots_ids, under_execution=False
@@ -225,6 +230,7 @@ def process_outgoing_transactions(ots_id=None):
                         u2 = OutgoingTransaction.objects.filter(id__in=ots_ids, under_execution=False
                             ).select_for_update().update(under_execution=True, txid=e.error)
                     raise
+
                 OutgoingTransaction.objects.filter(id__in=ots_ids).update(txid=result)
                 transaction = bitcoind.gettransaction(result)
                 if Decimal(transaction['fee']) < Decimal(0):
@@ -760,6 +766,8 @@ class Wallet(models.Model):
 
 
     def send_to_address(self, address, amount, description='', expires_seconds=settings.BITCOIN_OUTGOING_DEFAULT_DELAY_SECONDS):
+        logger = logging.getLogger('bitcoin_transactions')
+        logger.info("Sending %s BTC to %s from wallet %s" % (amount, address, self))
         if settings.BITCOIN_DISABLE_OUTGOING:
             raise Exception("Outgoing transactions disabled! contact support.")
         address = address.strip()
@@ -769,9 +777,13 @@ class Wallet(models.Model):
         amount = amount.quantize(Decimal('0.00000001'))
 
         if not is_valid_btc_address(str(address)):
-            raise Exception(_("Not a valid bitcoin address") + ":" + address)
+            message = _("Not a valid bitcoin address") + ":" + address
+            logger.error(message)
+            raise Exception(message)
         if amount <= 0:
-            raise Exception(_("Can't send zero or negative amounts"))
+            message = _("Can't send zero or negative amounts")
+            logger.error(message)
+            raise Exception(message)
         # concurrency check
 
         db_transaction.enter_transaction_management()
@@ -779,13 +791,16 @@ class Wallet(models.Model):
         avail = self.total_balance()
         updated = Wallet.objects.filter(Q(id=self.id)).update(last_balance=avail)
         if amount > avail:
-            raise Exception(_("Trying to send too much"))
+            message = _("Trying to send too much")
+            logger.error(message)
+            raise Exception(message)
+
         new_balance = avail - amount
         updated = Wallet.objects.filter(Q(id=self.id) & Q(transaction_counter=self.transaction_counter) &
             Q(last_balance=avail) )\
           .update(last_balance=new_balance, transaction_counter=self.transaction_counter+1)
         if not updated:
-            print "address transaction concurrency:", new_balance, avail, self.transaction_counter, self.last_balance, self.total_balance()
+            logger.error("address transaction concurrency:", new_balance, avail, self.transaction_counter, self.last_balance, self.total_balance())
             raise Exception(_("Concurrency error with transactions. Please try again."))
         # concurrency check end
         outgoing_transaction = OutgoingTransaction.objects.create(amount=amount, to_bitcoinaddress=address,
