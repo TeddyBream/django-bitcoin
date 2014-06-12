@@ -217,11 +217,11 @@ def process_outgoing_transactions(ots_id=None):
             updated = OutgoingTransaction.objects.filter(id__in=ots_ids,
                 executed_at=None).select_for_update().update(executed_at=datetime.datetime.now())
             if updated == len(ots):
-                logger.info("Sendmany: %s" % transaction_hash)
+                #logger.info("Sendmany: %s" % transaction_hash)
                 try:
                     result = bitcoind.sendmany(transaction_hash)
                 except jsonrpc.JSONRPCException as e:
-                    logger.error("Sendmany error: %s" % e.error)
+                    #logger.error("Sendmany error: %s" % e.error)
                     if e.error == u"{u'message': u'Insufficient funds', u'code': -4}" or \
                         e.error == u"{u'message': u'Insufficient funds', u'code': -6}":
                         u2 = OutgoingTransaction.objects.filter(id__in=ots_ids, under_execution=False
@@ -767,7 +767,7 @@ class Wallet(models.Model):
 
     def send_to_address(self, address, amount, description='', expires_seconds=settings.BITCOIN_OUTGOING_DEFAULT_DELAY_SECONDS):
         logger = logging.getLogger('bitcoin_transactions')
-        logger.info("Sending %s BTC to %s from user %s" % (amount, address, self.coinhand_profile.user))
+        logger.info("Sending %s BTC to %s from user %s(%s)" % (amount, address, self.coinhand_profile.user, self.coinhand_profile.user.email))
         if settings.BITCOIN_DISABLE_OUTGOING:
             raise Exception("Outgoing transactions disabled! contact support.")
         address = address.strip()
@@ -800,7 +800,8 @@ class Wallet(models.Model):
             Q(last_balance=avail) )\
           .update(last_balance=new_balance, transaction_counter=self.transaction_counter+1)
         if not updated:
-            logger.error("address transaction concurrency:", new_balance, avail, self.transaction_counter, self.last_balance, self.total_balance())
+            logger.error(_("Concurrency error with transactions. Please try again."))
+            print "Address transaction concurrency: ", new_balance, avail, self.transaction_counter, self.last_balance, self.total_balance()
             raise Exception(_("Concurrency error with transactions. Please try again."))
         # concurrency check end
         outgoing_transaction = OutgoingTransaction.objects.create(amount=amount, to_bitcoinaddress=address,
@@ -814,7 +815,11 @@ class Wallet(models.Model):
         try:
             process_outgoing_transactions(outgoing_transaction.id)
         except jsonrpc.JSONRPCException as e:
+            logger.error("Bitcoind error: %s" % (e.error,))
             raise Exception(e.error)
+        except Exception as e:
+            logger.error(e.message)
+            raise Exception(e.message)
         # try:
         # except jsonrpc.JSONRPCException:
         #     bwt.delete()
