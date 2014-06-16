@@ -64,9 +64,9 @@ def query_transactions():
                 asm = decoded_transaction['vin'][0]['scriptSig']['asm']
 
                 from_address = pubKeyToAddr(asm.split()[1], testnet)
-
-                logger.info("Received %s BTC from %s to %s on transaction %s with %s confirmations" %
-                            (tx['amount'], from_address, tx['address'], tx['txid'], tx['confirmations']))
+                if tx['confirmations'] <= settings.BITCOIN_MINIMUM_CONFIRMATIONS*2:
+                    logger.info("Received %s BTC from %s to %s on transaction %s with %s confirmations" %
+                                (tx['amount'], from_address, tx['address'], tx['txid'], tx['confirmations']))
                 ba = BitcoinAddress.objects.filter(address=tx[u'address'])
                 if ba.count() > 1:
                     raise Exception(u"Too many addresses!")

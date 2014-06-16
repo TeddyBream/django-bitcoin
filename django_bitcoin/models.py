@@ -767,7 +767,7 @@ class Wallet(models.Model):
 
     def send_to_address(self, address, amount, description='', expires_seconds=settings.BITCOIN_OUTGOING_DEFAULT_DELAY_SECONDS):
         logger = logging.getLogger('bitcoin_transactions')
-        logger.info("Sending %s BTC to %s from user %s(%s)" % (amount, address, self.coinhand_profile.user, self.coinhand_profile.user.email))
+        logger.info("Sending %s BTC from user %s(%s) to %s" % (amount, self.coinhand_profile.user, self.coinhand_profile.user.email, address))
         if settings.BITCOIN_DISABLE_OUTGOING:
             raise Exception("Outgoing transactions disabled! contact support.")
         address = address.strip()
