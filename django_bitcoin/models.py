@@ -590,6 +590,17 @@ class BitcoinHistory(models.Model):
 
 
 class WalletTransaction(BitcoinHistory):
+    
+    USUAL, CONVERT_SUCCESS, CONVERT_ERROR = range(3)
+    TYPE_CHOICES = (
+        (USUAL, _('Usual transaction')),
+        (CONVERT_SUCCESS, _('Convert currency transaction: success')),
+        (CONVERT_ERROR, _('Convert currency transaction: pending')),
+    )
+    wt_type = models.PositiveSmallIntegerField(
+        _('type'), blank=True, null=True, default=0,
+        choices=TYPE_CHOICES)
+
     from_wallet = models.ForeignKey(
         'Wallet',
         null=True,
