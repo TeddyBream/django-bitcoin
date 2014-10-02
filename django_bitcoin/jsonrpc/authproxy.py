@@ -40,9 +40,11 @@ import json
 import decimal
 import urlparse
 
+from django_bitcoin import settings
+
 USER_AGENT = "AuthServiceProxy/0.1"
 
-HTTP_TIMEOUT = 30
+HTTP_TIMEOUT = settings.HTTP_TIMEOUT_AUTHPROXY
 
 class JSONRPCException(Exception):
     def __init__(self, rpcError):
