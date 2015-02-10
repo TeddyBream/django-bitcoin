@@ -42,7 +42,11 @@ def query_transactions():
     logger = get_task_logger('bitcoin_transactions')
 
     with NonBlockingCacheLock("query_transactions_ongoing"):
-        info = bitcoind.bitcoind_api.getinfo()
+        try:
+            info = bitcoind.bitcoind_api.getinfo()
+        except Exception as e:
+            logger.error("query_transactions: exception %s" % e)
+            return
         testnet = info['testnet']
 
         blockcount = bitcoind.bitcoind_api.getblockcount()

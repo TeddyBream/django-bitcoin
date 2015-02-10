@@ -46,10 +46,15 @@ USER_AGENT = "AuthServiceProxy/0.1"
 
 HTTP_TIMEOUT = settings.HTTP_TIMEOUT_AUTHPROXY
 
+
 class JSONRPCException(Exception):
     def __init__(self, rpcError):
         Exception.__init__(self)
         self.error = rpcError
+
+    def __str__(self):
+        return "JSONRPCException %d: %s" % (self.error.get('code'),
+                                            self.error.get('message'))
 
 class AuthServiceProxy(object):
     def __init__(self, serviceURL, serviceName=None):
@@ -93,7 +98,10 @@ class AuthServiceProxy(object):
         if httpresp is None:
             raise JSONRPCException({
               'code' : -342, 'message' : 'missing HTTP response from server'})
-
+        if httpresp.status >= 400:
+            error = '%d (%s)' % (httpresp.status, httpresp.reason)
+            raise JSONRPCException({
+              'code' : -342, 'message' : 'error HTTP response from server: %s' % error})
         resp = json.loads(httpresp.read(), parse_float=decimal.Decimal)
         #print resp
         if resp['error'] != None:
