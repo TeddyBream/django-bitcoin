@@ -13,7 +13,8 @@ from django_bitcoin.utils import bitcoind, pubKeyToAddr
 from django_bitcoin import settings
 
 from django.utils.translation import ugettext as _
-from django_bitcoin.models import DepositTransaction, BitcoinAddress, WalletTransaction
+from django_bitcoin.models import DepositTransaction, BitcoinAddress, \
+    WalletTransaction, PersistIntCache
 
 import django.dispatch
 
@@ -51,10 +52,13 @@ def query_transactions():
 
         blockcount = bitcoind.bitcoind_api.getblockcount()
         max_query_block = blockcount - settings.BITCOIN_MINIMUM_CONFIRMATIONS - 1
-        if cache.get("queried_block_index"):
-            query_block = min(int(cache.get("queried_block_index")), max_query_block)
-        else:
+        try:
+            block = PersistIntCache.objects.get(key="queried_block_index")
+            query_block = min(block.value, max_query_block)
+        except:
             query_block = blockcount - 100
+            block = PersistIntCache.objects.create(key="queried_block_index",
+                                                   value=query_block)
         blockhash = bitcoind.bitcoind_api.getblockhash(query_block)
         # print query_block, blockhash
         transactions = bitcoind.bitcoind_api.listsinceblock(blockhash)
@@ -107,7 +111,8 @@ def query_transactions():
                 if wallet_transactions.count() > 0 and tx['confirmations'] >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
                     wallet_transactions.update(status=WalletTransaction.COMPLETE)
 
-        cache.set("queried_block_index", max_query_block)
+        block.value = max_query_block
+        block.save()
 
 import sys
 from cStringIO import StringIO
