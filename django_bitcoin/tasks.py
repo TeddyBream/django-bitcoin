@@ -42,6 +42,7 @@ def NonBlockingCacheLock(key, lock=None, blocking=False, timeout=10000):
 @task()
 def query_transactions():
     logger = get_task_logger('bitcoin_transactions')
+    logger.info("query_transactions: start task")
 
     with NonBlockingCacheLock("query_transactions_ongoing"):
         try:
