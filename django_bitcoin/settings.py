@@ -87,7 +87,13 @@ ENABLE_INTERNAL_TRANSACTIONS = getattr(
     settings,
     "ENABLE_INTERNAL_TRANSACTIONS",
     True)
+
 HTTP_TIMEOUT_AUTHPROXY = getattr(
     settings,
     "HTTP_TIMEOUT_AUTHPROXY",
     60)
+
+BITCOIN_START_BLOCK = getattr(
+    settings,
+    "BITCOIN_START_BLOCK",
+    338400)

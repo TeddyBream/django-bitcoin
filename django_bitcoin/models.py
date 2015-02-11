@@ -97,6 +97,10 @@ class DepositTransaction(models.Model):
 #     confirmations = models.IntegerField(default=0)
 #     parent = models.ForeignKey('BitcoinBlock')
 
+class PersistIntCache(models.Model):
+    key = models.CharField(max_length=32, db_index=True, unique=True)
+    value = models.BigIntegerField()
+
 class OutgoingTransaction(models.Model):
 
     created_at = models.DateTimeField(default=datetime.datetime.now)
