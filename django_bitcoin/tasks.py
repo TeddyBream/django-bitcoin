@@ -60,10 +60,7 @@ def query_transactions():
             block = PersistIntCache.objects.create(key="queried_block_index",
                                                    value=query_block)
         blockhash = bitcoind.bitcoind_api.getblockhash(query_block)
-        # print query_block, blockhash
         transactions = bitcoind.bitcoind_api.listsinceblock(blockhash)
-        # print transactions
-        #transactions = [tx for tx in transactions["transactions"] if tx["category"]=="receive"]
         print transactions["transactions"]
         for tx in transactions["transactions"]:
             if tx["category"] == "receive":

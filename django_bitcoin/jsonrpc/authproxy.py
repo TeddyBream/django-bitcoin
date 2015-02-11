@@ -52,7 +52,7 @@ class JSONRPCException(Exception):
         Exception.__init__(self)
         self.error = rpcError
 
-    def __str__(self):
+    def __unicode__(self):
         return "JSONRPCException %d: %s" % (self.error.get('code'),
                                             self.error.get('message'))
 
@@ -103,7 +103,6 @@ class AuthServiceProxy(object):
             raise JSONRPCException({
               'code' : -342, 'message' : 'error HTTP response from server: %s' % error})
         resp = json.loads(httpresp.read(), parse_float=decimal.Decimal)
-        #print resp
         if resp['error'] != None:
             raise JSONRPCException(unicode(resp['error']))
         elif 'result' not in resp:
