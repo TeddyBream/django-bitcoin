@@ -61,7 +61,6 @@ def query_transactions():
                                                    value=query_block)
         blockhash = bitcoind.bitcoind_api.getblockhash(query_block)
         transactions = bitcoind.bitcoind_api.listsinceblock(blockhash)
-        print transactions["transactions"]
         for tx in transactions["transactions"]:
             if tx["category"] == "receive":
                 raw_transaction = bitcoind.bitcoind_api.getrawtransaction(tx['txid'])
