@@ -59,7 +59,7 @@ def query_transactions():
             query_block = settings.BITCOIN_START_BLOCK
             block = PersistIntCache.objects.create(key="queried_block_index",
                                                    value=query_block)
-        logger.info("Monitor transactions from block %d to %d") %
+        logger.info("Monitor transactions from block %d to %d" %
                     (query_block, blockcount))
         blockhash = bitcoind.bitcoind_api.getblockhash(query_block)
         transactions = bitcoind.bitcoind_api.listsinceblock(blockhash)
