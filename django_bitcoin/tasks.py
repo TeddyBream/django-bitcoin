@@ -55,8 +55,8 @@ def query_transactions():
         try:
             block = PersistIntCache.objects.get(key="queried_block_index")
             query_block = min(block.value, max_query_block)
-        except:
-            query_block = 338400
+        except PersistIntCache.DoesNotExist:
+            query_block = settings.BITCOIN_START_BLOCK
             block = PersistIntCache.objects.create(key="queried_block_index",
                                                    value=query_block)
         blockhash = bitcoind.bitcoind_api.getblockhash(query_block)
