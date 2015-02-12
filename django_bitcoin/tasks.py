@@ -58,7 +58,7 @@ def process_receive_transaction(tx, logger, testnet):
         raise Exception(u"Too many addresses!")
     if ba.count() == 0:
         logger.warn("no address found, address %s" % tx[u'address'])
-        continue
+        return
     ba = ba[0]
     dps = DepositTransaction.objects.filter(
         txid=tx[u'txid'], amount=tx['amount'], address=ba)
