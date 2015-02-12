@@ -25,12 +25,14 @@ from BCAddressField import is_valid_btc_address
 
 from django.db import transaction as db_transaction
 from celery import task
-from distributedlock import distributedlock, MemcachedLock, LockNotAcquiredError
+from distributedlock import distributedlock, MemcachedLock, \
+    LockNotAcquiredError
 from django.core.cache import cache
 
 from django.core.mail import mail_admins
 from django.conf import settings
 from celery.utils.log import get_task_logger
+
 
 def NonBlockingCacheLock(key, lock=None, blocking=False, timeout=10000):
     if lock is None:
@@ -38,10 +40,56 @@ def NonBlockingCacheLock(key, lock=None, blocking=False, timeout=10000):
 
     return distributedlock(key, lock, blocking)
 
+
+def process_receive_transaction(tx, logger, testnet):
+    raw_transaction = bitcoind.bitcoind_api.getrawtransaction(tx['txid'])
+    decoded_transaction = \
+        bitcoind.bitcoind_api.decoderawtransaction(raw_transaction)
+    asm = decoded_transaction['vin'][0]['scriptSig']['asm']
+
+    from_address = pubKeyToAddr(asm.split()[1], testnet)
+    if tx['confirmations'] <= settings.BITCOIN_MINIMUM_CONFIRMATIONS*2:
+        logger.info("Received %s BTC from %s to %s on transaction %s with "
+                    "%s confirmations" %
+                    (tx['amount'], from_address, tx['address'],
+                     tx['txid'], tx['confirmations']))
+    ba = BitcoinAddress.objects.filter(address=tx[u'address'])
+    if ba.count() > 1:
+        raise Exception(u"Too many addresses!")
+    if ba.count() == 0:
+        logger.warn("no address found, address %s" % tx[u'address'])
+        continue
+    ba = ba[0]
+    dps = DepositTransaction.objects.filter(
+        txid=tx[u'txid'], amount=tx['amount'], address=ba)
+    if dps.count() > 1:
+        raise Exception(u"Too many deposittransactions for the same ID!")
+    elif dps.count() == 0:
+        deposit_tx = DepositTransaction.objects.create(
+            wallet=ba.wallet, address=ba,
+            from_bitcoinaddress=from_address,
+            amount=tx['amount'], txid=tx[u'txid'],
+            confirmations=int(tx['confirmations']))
+        if deposit_tx.confirmations >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
+            ba.query_bitcoin_deposit(deposit_tx)
+        else:
+            ba.query_unconfirmed_deposits()
+    elif dps.count() == 1 and not dps[0].under_execution:
+        deposit_tx = dps[0]
+        if int(tx['confirmations']) >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
+            ba.query_bitcoin_deposit(deposit_tx)
+        if int(tx['confirmations']) > deposit_tx.confirmations:
+            DepositTransaction.objects.filter(id=deposit_tx.id).update(
+                confirmations=int(tx['confirmations']))
+    else:
+        # dps.count() == 1
+        logger.info("Transaction %s already processed: %s" %
+                    (dps[0].txid, dps[0].transaction))
+
+
 def monitor_transactions(logger):
     info = bitcoind.bitcoind_api.getinfo()
     testnet = info['testnet']
-
     blockcount = bitcoind.bitcoind_api.getblockcount()
     max_query_block = blockcount - settings.BITCOIN_MINIMUM_CONFIRMATIONS - 1
     try:
@@ -57,48 +105,12 @@ def monitor_transactions(logger):
     transactions = bitcoind.bitcoind_api.listsinceblock(blockhash)
     for tx in transactions["transactions"]:
         if tx["category"] == "receive":
-            raw_transaction = bitcoind.bitcoind_api.getrawtransaction(tx['txid'])
-            decoded_transaction = bitcoind.bitcoind_api.decoderawtransaction(raw_transaction)
-            asm = decoded_transaction['vin'][0]['scriptSig']['asm']
-
-            from_address = pubKeyToAddr(asm.split()[1], testnet)
-            if tx['confirmations'] <= settings.BITCOIN_MINIMUM_CONFIRMATIONS*2:
-                logger.info("Received %s BTC from %s to %s on transaction %s with %s confirmations" %
-                            (tx['amount'], from_address, tx['address'], tx['txid'], tx['confirmations']))
-            ba = BitcoinAddress.objects.filter(address=tx[u'address'])
-            if ba.count() > 1:
-                raise Exception(u"Too many addresses!")
-            if ba.count() == 0:
-                print "no address found, address", tx[u'address']
-                continue
-            ba = ba[0]
-            dps = DepositTransaction.objects.filter(txid=tx[u'txid'], amount=tx['amount'], address=ba)
-            if dps.count() > 1:
-                raise Exception(u"Too many deposittransactions for the same ID!")
-            elif dps.count() == 0:
-                deposit_tx = DepositTransaction.objects.create(wallet=ba.wallet,
-                    address=ba,
-                    from_bitcoinaddress=from_address,
-                    amount=tx['amount'],
-                    txid=tx[u'txid'],
-                    confirmations=int(tx['confirmations']))
-                if deposit_tx.confirmations >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
-                    ba.query_bitcoin_deposit(deposit_tx)
-                else:
-                    ba.query_unconfirmed_deposits()
-            elif dps.count() == 1 and not dps[0].under_execution:
-                deposit_tx = dps[0]
-                if int(tx['confirmations']) >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
-                    ba.query_bitcoin_deposit(deposit_tx)
-                if int(tx['confirmations']) > deposit_tx.confirmations:
-                    DepositTransaction.objects.filter(id=deposit_tx.id).update(confirmations=int(tx['confirmations']))
-            elif dps.count() == 1:
-                print "already processed", dps[0].txid, dps[0].transaction
-            else:
-                print "FUFFUFUU"
+            process_receive_transaction(tx, logger, testnet)
         elif tx["category"] == "send":
-            wallet_transactions = WalletTransaction.objects.filter(outgoing_transaction__txid=tx[u'txid'])
-            if wallet_transactions.count() > 0 and tx['confirmations'] >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
+            wallet_transactions = WalletTransaction.objects.filter(
+                outgoing_transaction__txid=tx[u'txid'])
+            if wallet_transactions.count() > 0 and \
+               tx['confirmations'] >= settings.BITCOIN_MINIMUM_CONFIRMATIONS:
                 wallet_transactions.update(status=WalletTransaction.COMPLETE)
 
     block.value = max_query_block
@@ -113,7 +125,8 @@ def query_transactions():
         try:
             monitor_transactions(logger)
         except Exception as e:
-            logger.error("query_transactions: exception %s\n%s" % (e,  format_exc(e)))
+            logger.error("query_transactions: exception %s\n%s" %
+                         (e,  format_exc(e)))
             return
 
 
