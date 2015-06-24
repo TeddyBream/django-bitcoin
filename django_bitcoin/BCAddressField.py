@@ -19,15 +19,15 @@ class BCAddressField(forms.CharField):
         if not value and not self.required:
             return None
 
-        if not value.startswith(u"1") and not value.startswith(u"3"):
+        if not value.startswith("1") and not value.startswith("3"):
             raise ValidationError(self.error_messages['invalid'])
         value = value.strip()
 
         if "\n" in value:
-            raise ValidationError(u"Multiple lines in the bitcoin address")
+            raise ValidationError("Multiple lines in the bitcoin address")
 
         if " " in value:
-            raise ValidationError(u"Spaces in the bitcoin address")
+            raise ValidationError("Spaces in the bitcoin address")
 
         if re.match(r"[a-zA-Z1-9]{27,35}$", value) is None:
             raise ValidationError(self.error_messages['invalid'])
@@ -55,7 +55,7 @@ def b58encode(v):
     """ encode v, which is a string of bytes, to base58.
     """
 
-    long_value = 0L
+    long_value = 0
     for (i, c) in enumerate(v[::-1]):
         long_value += (256**i) * ord(c)
 
@@ -78,7 +78,7 @@ def b58encode(v):
 def b58decode(v, length):
     """ decode v into a string of len bytes
     """
-    long_value = 0L
+    long_value = 0
     for (i, c) in enumerate(v[::-1]):
         long_value += __b58chars.find(c) * (__b58base**i)
 
@@ -103,8 +103,8 @@ def b58decode(v, length):
 
 def b36encode(number, alphabet='0123456789abcdefghijklmnopqrstuvwxyz'):
     """Converts an integer to a base36 string."""
-    if not isinstance(number, (int, long)):
-        long_value = 0L
+    if not isinstance(number, int):
+        long_value = 0
         for (i, c) in enumerate(number[::-1]):
             long_value += (256**i) * ord(c)
         number = long_value

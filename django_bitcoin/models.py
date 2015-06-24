@@ -1,4 +1,4 @@
-from __future__ import with_statement
+
 
 import datetime
 import random
@@ -20,9 +20,9 @@ from django.utils.translation import ugettext as _
 
 import django.dispatch
 
-import jsonrpc
+from . import jsonrpc
 
-from BCAddressField import is_valid_btc_address
+from .BCAddressField import is_valid_btc_address
 
 from django.db import transaction as db_transaction
 from celery import task
@@ -88,7 +88,7 @@ class DepositTransaction(models.Model):
     txid = models.CharField(max_length=100, blank=True, null=True)
 
     def __unicode__(self):
-        return self.address.address + u", " + unicode(self.amount)
+        return self.address.address + ", " + str(self.amount)
 
 # class BitcoinBlock(models.Model):
 #     created_at = models.DateTimeField(default=datetime.datetime.now)
@@ -119,7 +119,7 @@ class OutgoingTransaction(models.Model):
     txid = models.CharField(max_length=100, blank=True, null=True, default=None)
 
     def __unicode__(self):
-        return unicode(self.created_at) + ": " + self.to_bitcoinaddress + u", " + unicode(self.amount)
+        return str(self.created_at) + ": " + self.to_bitcoinaddress + ", " + str(self.amount)
 
 @task()
 def update_wallet_balance(wallet_id):
@@ -226,8 +226,8 @@ def process_outgoing_transactions(ots_id=None):
                     result = bitcoind.sendmany(transaction_hash)
                 except jsonrpc.JSONRPCException as e:
                     #logger.error("Sendmany error: %s" % e.error)
-                    if e.error == u"{u'message': u'Insufficient funds', u'code': -4}" or \
-                        e.error == u"{u'message': u'Insufficient funds', u'code': -6}":
+                    if e.error == "{u'message': u'Insufficient funds', u'code': -4}" or \
+                        e.error == "{u'message': u'Insufficient funds', u'code': -6}":
                         u2 = OutgoingTransaction.objects.filter(id__in=ots_ids, under_execution=False
                             ).select_for_update().update(executed_at=None)
                     else:
@@ -335,7 +335,7 @@ class BitcoinAddress(models.Model):
 
     def query_bitcoin_deposit(self, deposit_tx):
         if deposit_tx.transaction:
-            print "Already has a transaction!"
+            print("Already has a transaction!")
             return
         with CacheLock('query_bitcoind'):
             r = bitcoind.total_received(self.address, minconf=settings.BITCOIN_MINIMUM_CONFIRMATIONS)
@@ -365,9 +365,9 @@ class BitcoinAddress(models.Model):
                         DepositTransaction.objects.select_for_update().filter(id=deposit_tx.id).update(transaction=wt)
                     self.wallet.update_last_balance(deposit_tx.amount)
                 else:
-                    print "transaction not updated!"
+                    print("transaction not updated!")
             else:
-                print "This path should not occur, but whatever."
+                print("This path should not occur, but whatever.")
                 # raise Exception("Should be never this way")
             return r
 
@@ -392,7 +392,7 @@ class BitcoinAddress(models.Model):
 
     def __unicode__(self):
         if self.label:
-            return u'%s (%s)' % (self.label, self.address)
+            return '%s (%s)' % (self.label, self.address)
         return self.address
 
 
@@ -406,7 +406,7 @@ def new_bitcoin_address():
         if len(bp) < 1:
             refill_payment_queue()
             db_transaction.commit()
-            print "refilling queue...", bp
+            print("refilling queue...", bp)
         else:
             bp = bp[0]
             updated = BitcoinAddress.objects.select_for_update().filter(Q(id=bp.id) & Q(active=False) & Q(wallet__isnull=True) & \
@@ -416,7 +416,7 @@ def new_bitcoin_address():
             if updated:
                 return bp
             else:
-                print "wallet transaction concurrency:", bp.address
+                print("wallet transaction concurrency:", bp.address)
         db_transaction.commit()
         db_transaction.leave_transaction_management()
 
@@ -478,8 +478,8 @@ class Payment(models.Model):
     def withdraw_proportion_all(cls, address, bitcoin_payments_proportions):
         """hash BitcoinPayment -> Proportion"""
         final_amount=Decimal("0.0")
-        print bitcoin_payments_proportions
-        for bp, proportion in bitcoin_payments_proportions.iteritems():
+        print(bitcoin_payments_proportions)
+        for bp, proportion in bitcoin_payments_proportions.items():
             am=bp.calculate_amount(proportion)
             final_amount+=am
             bp.add_transaction(am, address)
@@ -497,7 +497,7 @@ class Payment(models.Model):
         #self.withdraw_addresses=",".join(addresses)
         #self.withdraw_proportions=",".join([str(x) for x in proportions])
         amounts=[]
-        for p in addresses_shares.values():
+        for p in list(addresses_shares.values()):
             if p<=0:
                 raise Exception()
             am=quantitize_bitcoin(Decimal((p/Decimal("100.0"))*self.amount))
@@ -522,9 +522,9 @@ class Payment(models.Model):
         amounts_all=Payment.calculate_amounts(bitcoinpayments, addresses_shares)
         for bp in bitcoinpayments:
             am=bp.withdraw_amounts(addresses_shares)
-            bp.withdraw_addresses=",".join(addresses_shares.keys())
+            bp.withdraw_addresses=",".join(list(addresses_shares.keys()))
             bp.withdraw_proportions=",".join(
-                [str(x) for x in addresses_shares.values()])
+                [str(x) for x in list(addresses_shares.values())])
             bp.withdraw_amounts=",".join(
                 [str(x) for x in am])
             bp.withdrawn_at=datetime.datetime.now()
@@ -545,7 +545,7 @@ class Payment(models.Model):
 
     def update_payment(self, minconf=1):
         new_amount=Decimal(bitcoin_getbalance(self.address, minconf=minconf))
-        print "blaa", new_amount, self.address
+        print("blaa", new_amount, self.address)
         if new_amount>=self.amount:
             self.amount_paid=new_amount
             self.paid_at=datetime.datetime.now()
@@ -567,7 +567,7 @@ class Payment(models.Model):
         return super(Payment, self).save(**kwargs)
 
     def __unicode__(self):
-        return unicode(self.amount_paid)
+        return str(self.amount_paid)
 
     @models.permalink
     def get_absolute_url(self):
@@ -595,7 +595,7 @@ class BitcoinHistory(models.Model):
 
 class WalletTransaction(BitcoinHistory):
     
-    USUAL, CONVERT_SUCCESS, CONVERT_ERROR = range(3)
+    USUAL, CONVERT_SUCCESS, CONVERT_ERROR = list(range(3))
     TYPE_CHOICES = (
         (USUAL, _('Usual transaction')),
         (CONVERT_SUCCESS, _('Convert currency transaction: success')),
@@ -625,12 +625,12 @@ class WalletTransaction(BitcoinHistory):
 
     def __unicode__(self):
         if self.from_wallet and self.to_wallet:
-            return u"Wallet transaction "+unicode(self.amount)
+            return "Wallet transaction "+str(self.amount)
         elif self.from_wallet and self.to_bitcoinaddress:
-            return u"Outgoing bitcoin transaction "+unicode(self.amount)
+            return "Outgoing bitcoin transaction "+str(self.amount)
         elif self.to_wallet and not self.from_wallet:
-            return u"Deposit "+unicode(self.amount)
-        return u"Fee "+unicode(self.amount)
+            return "Deposit "+str(self.amount)
+        return "Fee "+str(self.amount)
 
     def clean(self):
         from django.core.exceptions import ValidationError
@@ -690,7 +690,7 @@ class Wallet(models.Model):
             update_wallet_balance.apply_async((self.id,), countdown=1)
 
     def __unicode__(self):
-        return u"%s: %s" % (self.label,
+        return "%s: %s" % (self.label,
                             self.created_at.strftime('%Y-%m-%d %H:%M'))
 
     def save(self, *args, **kwargs):
@@ -709,7 +709,7 @@ class Wallet(models.Model):
             addr = new_bitcoin_address()
             updated = BitcoinAddress.objects.select_for_update().filter(Q(id=addr.id) & Q(active=True) & Q(least_received__lte=0) & Q(wallet__isnull=True))\
                           .update(active=True, wallet=self)
-            print "addr_id", addr.id, updated
+            print("addr_id", addr.id, updated)
             # db_transaction.commit()
             if updated:
                 return addr.address
@@ -748,7 +748,7 @@ class Wallet(models.Model):
             Q(last_balance=avail))\
           .update(last_balance=new_balance, transaction_counter=self.transaction_counter+1)
         if not updated:
-            print "wallet transaction concurrency:", new_balance, avail, self.transaction_counter, self.last_balance, self.total_balance()
+            print("wallet transaction concurrency:", new_balance, avail, self.transaction_counter, self.last_balance, self.total_balance())
             raise Exception(_("Concurrency error with transactions. Please try again."))
         # db_transaction.commit()
         # concurrency check end
@@ -816,7 +816,7 @@ class Wallet(models.Model):
           .update(last_balance=new_balance, transaction_counter=self.transaction_counter+1)
         if not updated:
             logger.error(_("Concurrency error with transactions. Please try again."))
-            print "Address transaction concurrency: ", new_balance, avail, self.transaction_counter, self.last_balance, self.total_balance()
+            print("Address transaction concurrency: ", new_balance, avail, self.transaction_counter, self.last_balance, self.total_balance())
             raise Exception(_("Concurrency error with transactions. Please try again."))
         # concurrency check end
         outgoing_transaction = OutgoingTransaction.objects.create(amount=amount, to_bitcoinaddress=address,
@@ -1005,7 +1005,7 @@ class Wallet(models.Model):
             return True
         if self.sent_transactions.all().count():
             return True
-        if filter(lambda x: x.received(), self.addresses.all()):
+        if [x for x in self.addresses.all() if x.received()]:
             return True
         return False
 
@@ -1080,8 +1080,8 @@ def update_payments():
     for bp in bps:
         bp.amount_paid=Decimal(bitcoin_getbalance(bp.address))
         bp.save()
-        print bp.amount
-        print bp.amount_paid
+        print(bp.amount)
+        print(bp.amount_paid)
 
 @transaction.commit_on_success
 def new_bitcoin_payment(amount):
@@ -1102,7 +1102,7 @@ def getNewBitcoinPayment(amount):
 
 @transaction.commit_on_success
 def new_bitcoin_payment_eur(amount):
-    print bitcoinprice_eur()
+    print(bitcoinprice_eur())
     return new_bitcoin_payment(Decimal(amount)/Decimal(bitcoinprice_eur()['24h']))
 
 def getNewBitcoinPayment_eur(amount):
@@ -1138,13 +1138,12 @@ class HistoricalPrice(models.Model):
 def set_historical_price(curr="EUR"):
     markets = currency.markets_chart()
     # print markets
-    markets_currency = sorted(filter(lambda m: m['currency']==curr and m['volume']>1 and not m['symbol'].startswith("mtgox"),
-        markets.values()), key=lambda m: -m['volume'])[:3]
+    markets_currency = sorted([m for m in list(markets.values()) if m['currency']==curr and m['volume']>1 and not m['symbol'].startswith("mtgox")], key=lambda m: -m['volume'])[:3]
     # print markets_currency
     price = sum([m['avg'] for m in markets_currency]) / len(markets_currency)
     hp = HistoricalPrice.objects.create(price=Decimal(str(price)), params=",".join([m['symbol']+"_avg" for m in markets_currency]), currency=curr,
             created_at=datetime.datetime.now())
-    print "Created new",hp
+    print("Created new",hp)
     return hp
 
 def get_historical_price_object(dt=None, curr="EUR"):

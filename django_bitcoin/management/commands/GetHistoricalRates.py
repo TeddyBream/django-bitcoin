@@ -4,9 +4,9 @@ import os
 import sys
 import re
 import codecs
-import commands
-import urllib2
-import urllib
+import subprocess
+import urllib.request, urllib.error, urllib.parse
+import urllib.request, urllib.parse, urllib.error
 import json
 import random
 from time import sleep
@@ -22,4 +22,4 @@ class Command(NoArgsCommand):
     def handle_noargs(self, **options):
         u = datetime.datetime.utcnow()
         u = u.replace(tzinfo=pytz.utc)
-        print u, get_historical_price()
+        print(u, get_historical_price())

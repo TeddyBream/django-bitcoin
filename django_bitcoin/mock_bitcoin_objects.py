@@ -20,7 +20,7 @@ import string
 ADDR_CHARS = '%s%s' % (string.letters, string.digits)
 ADDR_LEN = 34
 def create_address(self):
-    return ''.join([random.choice(ADDR_CHARS) for i in xrange(ADDR_LEN)])
+    return ''.join([random.choice(ADDR_CHARS) for i in range(ADDR_LEN)])
 
 ## FIRST
 mock_bitcoind = mock.Mock(wraps=utils.bitcoind, spec=utils.bitcoind)

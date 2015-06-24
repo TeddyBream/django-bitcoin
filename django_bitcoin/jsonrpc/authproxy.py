@@ -34,11 +34,11 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 """
 
-import httplib
+import http.client
 import base64
-import json
+from . import json
 import decimal
-import urlparse
+import urllib.parse
 
 from django_bitcoin import settings
 
@@ -60,7 +60,7 @@ class AuthServiceProxy(object):
     def __init__(self, serviceURL, serviceName=None):
         self.__serviceURL = serviceURL
         self.__serviceName = serviceName
-        self.__url = urlparse.urlparse(serviceURL)
+        self.__url = urllib.parse.urlparse(serviceURL)
         if self.__url.port is None:
             port = 80
         else:
@@ -69,10 +69,10 @@ class AuthServiceProxy(object):
         authpair = "%s:%s" % (self.__url.username, self.__url.password)
         self.__authhdr = "Basic %s" % (base64.b64encode(authpair))
         if self.__url.scheme == 'https':
-            self.__conn = httplib.HTTPSConnection(self.__url.hostname, port, None, None,False,
+            self.__conn = http.client.HTTPSConnection(self.__url.hostname, port, None, None,False,
                     HTTP_TIMEOUT)
         else:
-            self.__conn = httplib.HTTPConnection(self.__url.hostname, port, False,
+            self.__conn = http.client.HTTPConnection(self.__url.hostname, port, False,
                     HTTP_TIMEOUT)
 
     def __getattr__(self, name):
@@ -104,7 +104,7 @@ class AuthServiceProxy(object):
               'code' : -342, 'message' : 'error HTTP response from server: %s' % error})
         resp = json.loads(httpresp.read(), parse_float=decimal.Decimal)
         if resp['error'] != None:
-            raise JSONRPCException(unicode(resp['error']))
+            raise JSONRPCException(str(resp['error']))
         elif 'result' not in resp:
             raise JSONRPCException({
                 'code' : -343, 'message' : 'missing JSON-RPC result'})

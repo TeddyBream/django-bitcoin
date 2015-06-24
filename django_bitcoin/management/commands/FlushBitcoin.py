@@ -4,9 +4,9 @@ import os
 import sys
 import re
 import codecs
-import commands
-import urllib2
-import urllib
+import subprocess
+import urllib.request, urllib.error, urllib.parse
+import urllib.request, urllib.parse, urllib.error
 import json
 import numpy
 import random

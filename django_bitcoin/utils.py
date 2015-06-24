@@ -2,10 +2,10 @@
 
 import os
 import json
-import jsonrpc
+from . import jsonrpc
 import sys
-import urllib
-import urllib2
+import urllib.request, urllib.parse, urllib.error
+import urllib.request, urllib.error, urllib.parse
 import random
 import hashlib
 import base64
@@ -19,7 +19,7 @@ from django.db import transaction
 from django_bitcoin import settings
 from django_bitcoin import currency
 
-from pywallet import privkey2address
+from .pywallet import privkey2address
 
 # BITCOIND COMMANDS
 
@@ -73,7 +73,7 @@ class BitcoindConnection(object):
         label = "import"
         address_from = privkey2address(key)
         if not address_from or not address_from.startswith("1"):
-            print address_from
+            print(address_from)
             return None
         # print address_from
         try:
@@ -84,7 +84,7 @@ class BitcoindConnection(object):
         return (address_from, quantitize_bitcoin(Decimal(sum([Decimal(x['amount']) for x in unspent_transactions]))))
 
     def redeemprivatekey(self, key, address_from, address_to):
-        if type(address_to) == str or type(address_to) == unicode:
+        if type(address_to) == str or type(address_to) == str:
             address_to = ((address_to, None),)
         if address_from != privkey2address(key):
             return None

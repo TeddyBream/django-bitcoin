@@ -4,9 +4,9 @@ import os
 import sys
 import re
 import codecs
-import commands
-import urllib2
-import urllib
+import subprocess
+import urllib.request, urllib.error, urllib.parse
+import urllib.request, urllib.parse, urllib.error
 import json
 import random
 from time import sleep
@@ -69,16 +69,16 @@ class Command(BaseCommand):
                     s = dts.aggregate(Sum('amount'))['amount__sum'] or Decimal(0)
                     if s < ba.least_received_confirmed and ba.least_received_confirmed > 0:
                         wt = WalletTransaction.objects.create(amount=ba.least_received_confirmed - s, to_wallet=ba.wallet, created_at=ba.created_at,
-                            description=u"Deposits "+ba.address+u" "+ ba.created_at.strftime("%x")  + u" - "+ dt_now.strftime("%x"),
+                            description="Deposits "+ba.address+" "+ ba.created_at.strftime("%x")  + " - "+ dt_now.strftime("%x"),
                             deposit_address=ba)
                         dt = DepositTransaction.objects.create(address=ba, amount=wt.amount, wallet=ba.wallet,
                             created_at=ba.created_at, transaction=wt, confirmations=settings.BITCOIN_MINIMUM_CONFIRMATIONS,
-                            description=u"Deposits "+ba.address+u" "+ ba.created_at.strftime("%x")  + u" - "+ dt_now.strftime("%x"))
-                        print dt.description, dt.amount
+                            description="Deposits "+ba.address+" "+ ba.created_at.strftime("%x")  + " - "+ dt_now.strftime("%x"))
+                        print(dt.description, dt.amount)
                     elif s > ba.least_received_confirmed:
-                        print "TOO MUCH!!!", ba.address
+                        print("TOO MUCH!!!", ba.address)
                     elif s < ba.least_received_confirmed:
-                        print "too little, address", ba.address, ba.least_received_confirmed, s
+                        print("too little, address", ba.address, ba.least_received_confirmed, s)
                     BitcoinAddress.objects.filter(id=ba.id).update(migrated_to_transactions=True)
                 flush_transaction()
                 wt_sum = WalletTransaction.objects.filter(deposit_address=ba).aggregate(Sum('amount'))['amount__sum'] or Decimal(0)
@@ -93,10 +93,10 @@ class Command(BaseCommand):
                 if tot_received != tot_received_bitcoinaddress:
                     raise Exception("wrong total receive amount! "+str(ba.address))
 
-        print "Migrated, doing final check..."
+        print("Migrated, doing final check...")
         tot_received = WalletTransaction.objects.filter(from_wallet=None).aggregate(Sum('amount'))['amount__sum'] or Decimal(0)
         tot_received_bitcoinaddress = BitcoinAddress.objects.filter(migrated_to_transactions=True)\
             .aggregate(Sum('least_received_confirmed'))['least_received_confirmed__sum'] or Decimal(0)
         if tot_received != tot_received_bitcoinaddress:
             raise Exception("wrong total receive amount! "+str(ba.address))
-        print "Final check succesfull."
+        print("Final check succesfull.")

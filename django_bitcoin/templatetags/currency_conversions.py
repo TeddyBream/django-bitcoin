@@ -4,7 +4,7 @@ from django_bitcoin import currency
 import json
 from decimal import Decimal
 
-import urllib
+import urllib.request, urllib.parse, urllib.error
 
 from django.core.urlresolvers import reverse,  NoReverseMatch
 
@@ -92,10 +92,10 @@ def bitcoin_payment_qr(address, amount=Decimal("0"), description='', display_cur
         currency_amount=(Decimal(amount)*currency.exchange.get_rate(display_currency)).quantize(Decimal("0.01"))
     try:
         image_url = reverse('qrcode', args=('dummy',))
-    except NoReverseMatch,e:
+    except NoReverseMatch as e:
         raise ImproperlyConfigured('Make sure you\'ve included django_bitcoin.urls')
     qr = "bitcoin:"+address+("", "?amount="+str(amount))[amount>0]
-    qr = urllib.quote(qr)
+    qr = urllib.parse.quote(qr)
     address_qrcode = reverse('qrcode', args=(qr,))
     return {'address': address, 
             'address_qrcode': address_qrcode,
