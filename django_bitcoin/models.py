@@ -16,7 +16,7 @@ from django_bitcoin.utils import *
 from django_bitcoin.utils import bitcoind
 from django_bitcoin import settings
 
-from django.utils.translation import ugettext as _
+from django.utils.translation import ugettext_lazy as _
 
 import django.dispatch
 
@@ -1083,7 +1083,7 @@ def update_payments():
         print(bp.amount)
         print(bp.amount_paid)
 
-@transaction.commit_on_success
+@transaction.atomic
 def new_bitcoin_payment(amount):
     bp=BitcoinPayment.objects.filter(active=False)
     if len(bp)<1:
@@ -1100,7 +1100,7 @@ def getNewBitcoinPayment(amount):
                   DeprecationWarning)
     return new_bitcoin_payment(amount)
 
-@transaction.commit_on_success
+@transaction.atomic
 def new_bitcoin_payment_eur(amount):
     print(bitcoinprice_eur())
     return new_bitcoin_payment(Decimal(amount)/Decimal(bitcoinprice_eur()['24h']))

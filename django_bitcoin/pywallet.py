@@ -29,7 +29,6 @@ import traceback
 import socket
 import types
 import string
-import exceptions
 import hashlib
 import random
 import math
